@@ -48,6 +48,12 @@ SETTING(inapp_undo, "inapp/inapp_undo", QString, "ctrl+z", Import, Gen, Gen)
 SETTING(inapp_redo, "inapp/inapp_redo", QString, "ctrl+y", Import, Gen, Gen)
 SETTING(inapp_delete, "inapp/inapp_delete", QString, "delete", Import, Gen, Gen)
 SETTING(inapp_restore_last_region, "inapp/inapp_restore_last_region", QString, "l", Import, Gen, Gen)
+// Screenshot history replay: left/right load an older/newer image from the clipboard history.
+// Set the keys to "," and "." (or empty) to leave the arrows to the cursor nudge.
+SETTING(inapp_prev_capture, "inapp/inapp_prev_capture", QString, "left", Import, Gen, Gen)
+SETTING(inapp_next_capture, "inapp/inapp_next_capture", QString, "right", Import, Gen, Gen)
+// How many recent history images the arrows can step through; 0 disables the replay.
+SETTING(capture_history_limit, "app/capture_history_limit", int, 10, Import, Gen, Gen)
 SETTING(inapp_copy_pin, "inapp/inapp_copy_pin", QString, "ctrl+c", Import, Gen, Gen)
 SETTING(inapp_copy_pin_text, "inapp/inapp_copy_pin_text", QString, "ctrl+shift+c", Import, Gen, Gen)
 SETTING(inapp_pin_reset_size, "inapp/inapp_pin_reset_size", QString, "", Import, Gen, Gen)

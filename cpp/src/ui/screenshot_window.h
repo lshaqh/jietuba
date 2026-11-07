@@ -23,6 +23,11 @@ class Toolbar;
 class ToolSettingsManager;
 class ScreenshotWindow;
 
+// Paints a history screenshot centred on a canvas the size of the live desktop image, so the
+// scene keeps its virtual-desktop coordinates (magnifier, mosaic and export all stay aligned).
+// `placed` receives the rectangle of the image in canvas-local coordinates; may be null.
+QImage compose_history_canvas(const QImage &live, const QImage &history, QRectF *placed);
+
 // Capture window shortcuts.
 class ScreenshotShortcutHandler : public ShortcutHandler {
 public:
@@ -51,6 +56,12 @@ private:
     // stored in absolute virtual desktop (scene) coordinates; outside the current
     // desktop (monitors rearranged) it quietly does nothing.
     bool restore_last_region();
+    // Steps through recent images in the clipboard history. +1 goes older, -1 newer;
+    // -1 means the live screen again. Returns false when there is nothing to replay,
+    // so the arrow keys fall through to the cursor nudge.
+    bool show_history_capture(int step);
+    int history_index_ = -1;
+    QImage live_image_;
     std::vector<std::pair<QString, QString>> tool_shortcuts_;  // (config key, tool id)
     QHash<QString, KeyBinding> bindings_;
     QHash<QString, MouseBinding> mouse_bindings_;

@@ -59,6 +59,7 @@ const QStringList &default_inapp_keys() {
     static const QStringList keys = {
         "inapp_confirm", "inapp_pin", "inapp_undo", "inapp_redo",
         "inapp_delete", "inapp_restore_last_region",
+        "inapp_prev_capture", "inapp_next_capture",
         "inapp_copy_pin", "inapp_copy_pin_text", "inapp_pin_reset_size",
         "inapp_thumbnail", "inapp_toggle_toolbar", "inapp_pin_hide_annotations", "inapp_pin_lock", "inapp_pin_text_mode", "inapp_pin_text_selection",
         "inapp_zoom_in", "inapp_zoom_out", "inapp_translate",

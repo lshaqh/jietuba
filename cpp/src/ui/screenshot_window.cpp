@@ -8,6 +8,7 @@
 #include "canvas/view.h"
 #include "capture/capture_service.h"
 #include "capture/system_cursor.h"
+#include "clipboard/core/manager.h"
 #include "core/i18n.h"
 #include "core/last_capture_region.h"
 #include "core/logger.h"
@@ -35,9 +36,12 @@
 #include "ui/selection_overlay.h"
 #include "ui/toolbar.h"
 #include <QApplication>
+#include <QColor>
 #include <QCursor>
 #include <QElapsedTimer>
 #include <QGraphicsPixmapItem>
+#include <QPainter>
+#include <algorithm>
 #include "gif/record_window.h"
 #include <QGraphicsTextItem>
 #include <QKeyEvent>
@@ -52,6 +56,45 @@ QString window_tr(const char *text) { return i18n_tr(text, "ScreenshotWindow"); 
 
 // Milliseconds since the timer started, as a "{:.1f}ms" timing entry.
 QString timing_entry(const QString &name, double ms) { return QString("%1=%2ms").arg(name, QString::number(ms, 'f', 1)); }
+
+// Every finished capture already lands in the clipboard history through deliver_screenshot(),
+// so the replay needs no separate snapshot queue. Newest first, regardless of backend order.
+QList<clipboard::ClipboardItem> recent_image_items(int limit) {
+    auto &manager = clipboard::ClipboardManager::instance();
+    if (!manager.is_available()) return {};
+    auto items = manager.get_history(0, limit, std::nullopt, clipboard::FilterRule::of_kind("image"));
+    std::sort(items.begin(), items.end(), [](const clipboard::ClipboardItem &a, const clipboard::ClipboardItem &b) {
+        if (a.updated_at.isValid() && b.updated_at.isValid() && a.updated_at != b.updated_at) return a.updated_at > b.updated_at;
+        return a.id > b.id;
+    });
+    return items;
+}
+
+QImage load_history_image(const clipboard::ClipboardItem &item) {
+    if (item.content_type != "image" || !item.image_id || item.image_id->isEmpty()) return {};
+    const auto data = clipboard::ClipboardManager::instance().get_image_data(*item.image_id);
+    if (!data || data->isEmpty()) return {};
+    QImage image;
+    return image.loadFromData(*data) ? image : QImage();
+}
+}
+
+QImage compose_history_canvas(const QImage &live, const QImage &history, QRectF *placed) {
+    if (live.isNull() || history.isNull() || live.width() <= 0 || live.height() <= 0 || history.width() <= 0 || history.height() <= 0) return {};
+    const QSizeF available(live.size());
+    const QSizeF original(history.size());
+    // Long screenshots shrink to fit; ordinary captures stay at 1:1.
+    const double scale = std::min({1.0, available.width() / original.width(), available.height() / original.height()});
+    const QSizeF drawn(original.width() * scale, original.height() * scale);
+    const QRectF target((available.width() - drawn.width()) / 2.0, (available.height() - drawn.height()) / 2.0, drawn.width(), drawn.height());
+    QImage canvas(live.size(), live.format());
+    canvas.fill(QColor(24, 24, 24));
+    QPainter painter(&canvas);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, scale < 1.0);
+    painter.drawImage(target, history, QRectF(history.rect()));
+    painter.end();
+    if (placed) *placed = target;
+    return canvas;
 }
 
 ScreenshotShortcutHandler::ScreenshotShortcutHandler(ScreenshotWindow *window) : window(window) {
@@ -59,6 +102,7 @@ ScreenshotShortcutHandler::ScreenshotShortcutHandler(ScreenshotWindow *window) :
     QStringList bound_keys = {
         "inapp_confirm", "inapp_pin", "inapp_undo", "inapp_redo",
         "inapp_delete", "inapp_restore_last_region",
+        "inapp_prev_capture", "inapp_next_capture",
         "inapp_zoom_in", "inapp_zoom_out", "inapp_translate",
         "inapp_text_recognize", "inapp_save", "inapp_quick_save",
     };
@@ -130,6 +174,16 @@ bool ScreenshotShortcutHandler::handle_key(QInputEvent *event) {
         return true;
     }
     if (match(event, "inapp_restore_last_region") && restore_last_region()) return true;
+    // Screenshot history replay takes the arrows before the cursor nudge below. With no
+    // history image (or the replay disabled) the key falls through to the nudge as before.
+    if (!is_text_editing && match(event, "inapp_prev_capture")) {
+        if (event_is_auto_repeat(event)) return history_index_ >= 0;
+        return show_history_capture(1);
+    }
+    if (!is_text_editing && match(event, "inapp_next_capture")) {
+        if (event_is_auto_repeat(event)) return history_index_ >= 0;
+        return show_history_capture(-1);
+    }
     if (match(event, "inapp_confirm")) {
         if (w->scene && w->scene->selection_model->is_confirmed()) {
             w->action_handler->handle_confirm();
@@ -235,6 +289,39 @@ bool ScreenshotShortcutHandler::restore_last_region() {
                                static_cast<int>(python_round(w->virtual_width)), static_cast<int>(python_round(w->virtual_height)));
     if (!virtual_bounds.contains(*absolute)) return false;
     w->scene->preset_selection(QRectF(*absolute));
+    return true;
+}
+
+bool ScreenshotShortcutHandler::show_history_capture(int step) {
+    auto *w = window;
+    if (!w->scene || !w->config_manager) return false;
+    const int limit = w->config_manager->get_capture_history_limit();
+    if (limit <= 0) return false;
+    // Drawing tools own their arrow keys; only the cursor tool replays history.
+    if (w->scene->tool_controller->current_tool_id() != "cursor") return false;
+    const auto items = recent_image_items(limit);
+    if (items.isEmpty()) return false;
+    // Keep the live desktop so the right arrow can bring it back.
+    if (live_image_.isNull()) live_image_ = w->original_image;
+    int next = history_index_ + step;
+    if (next < -1) next = -1;
+    if (next >= items.size()) return true;            // already at the oldest available image
+    if (next == history_index_) return next >= 0;      // nothing to do on the live screen
+    if (next < 0) {
+        history_index_ = -1;
+        w->replace_background(live_image_);
+        return true;
+    }
+    const QImage history = load_history_image(items.at(next));
+    if (history.isNull()) return false;
+    QRectF placed;
+    const QImage canvas = compose_history_canvas(live_image_, history, &placed);
+    if (canvas.isNull()) return false;
+    w->replace_background(canvas);
+    history_index_ = next;
+    // The canvas is painted from (0, 0), while the scene uses virtual-desktop coordinates.
+    placed.translate(w->scene->sceneRect().topLeft());
+    w->scene->preset_selection(placed);
     return true;
 }
 

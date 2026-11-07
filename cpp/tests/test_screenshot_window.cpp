@@ -963,6 +963,43 @@ private slots:
     }
 
     // Holding the refresh button recaptures the screens behind the selection.
+    // A history screenshot is painted onto a desktop-sized canvas so the scene keeps its
+    // virtual-desktop coordinates; a long screenshot shrinks instead of resizing the scene.
+    void historyCanvasKeepsDesktopCoordinates() {
+        QImage live(200, 100, QImage::Format_ARGB32);
+        live.fill(Qt::black);
+        QImage history(40, 30, QImage::Format_ARGB32);
+        history.fill(Qt::red);
+        QRectF placed;
+        const QImage canvas = compose_history_canvas(live, history, &placed);
+        QVERIFY(!canvas.isNull());
+        QCOMPARE(canvas.size(), QSize(200, 100));
+        QCOMPARE(placed, QRectF(80, 35, 40, 30));
+        QCOMPARE(canvas.pixelColor(100, 50), QColor(Qt::red));
+        QImage tall(400, 300, QImage::Format_ARGB32);
+        tall.fill(Qt::blue);
+        QRectF tall_placed;
+        const QImage tall_canvas = compose_history_canvas(live, tall, &tall_placed);
+        QVERIFY(!tall_canvas.isNull());
+        QCOMPARE(tall_canvas.size(), QSize(200, 100));
+        QVERIFY(tall_placed.width() <= 200);
+        QVERIFY(tall_placed.height() <= 100);
+        QVERIFY(qFuzzyCompare(tall_placed.width() / tall_placed.height(), 400.0 / 300.0));
+        QVERIFY(compose_history_canvas(QImage(), history, nullptr).isNull());
+    }
+
+    // The replay keys have usable defaults, and the limit can switch the feature off.
+    void historyReplayKeysAndLimit() {
+        QCOMPARE(config_->get_capture_history_limit(), 10);
+        QCOMPARE(config_->get_inapp_shortcut("inapp_prev_capture"), QString("left"));
+        QCOMPARE(config_->get_inapp_shortcut("inapp_next_capture"), QString("right"));
+        const auto bindings = load_inapp_bindings({"inapp_prev_capture", "inapp_next_capture"});
+        QCOMPARE(bindings.value("inapp_prev_capture").first, int(Qt::Key_Left));
+        QCOMPARE(bindings.value("inapp_next_capture").first, int(Qt::Key_Right));
+        config_->set_capture_history_limit(0);
+        QCOMPARE(config_->get_capture_history_limit(), 0);
+    }
+
     void refreshReplacesTheBackground() {
         auto *window = open_with_selection();
         const QImage before = window->original_image;
@@ -1370,9 +1407,13 @@ private slots:
         QCOMPARE(magnifier->get_zoom_factor(), zoom);
         QTest::keyClick(window, Qt::Key_Shift);
         QVERIFY(window->session_active());
+        // The history replay keys claim the arrows by default; turn replay off so this
+        // checks the 1-pixel cursor nudge itself.
+        config_->set_capture_history_limit(0);
         QCursor::setPos(300, 300);
         QTest::keyClick(window, Qt::Key_Left);
         QVERIFY(QCursor::pos() != QPoint(300, 300));
+        config_->set_capture_history_limit(10);
         // C copies the colour under the pointer and ends the capture; the marker tells the clipboard history it is a colour.
         QTest::keyClick(window, Qt::Key_C);
         QVERIFY(!window->session_active());
