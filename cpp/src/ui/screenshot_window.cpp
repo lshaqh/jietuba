@@ -177,12 +177,20 @@ bool ScreenshotShortcutHandler::handle_key(QInputEvent *event) {
     // Screenshot history replay takes the arrows before the cursor nudge below. With no
     // history image (or the replay disabled) the key falls through to the nudge as before.
     if (!is_text_editing && match(event, "inapp_prev_capture")) {
-        if (event_is_auto_repeat(event)) return history_index_ >= 0;
-        return show_history_capture(1);
+        // Only consume the arrow when a replay actually took place. With the feature off,
+        // no history image, or a drawing tool active, it falls through to the cursor nudge.
+        if (event_is_auto_repeat(event)) {
+            if (history_index_ >= 0) return true;
+        } else if (show_history_capture(1)) {
+            return true;
+        }
     }
     if (!is_text_editing && match(event, "inapp_next_capture")) {
-        if (event_is_auto_repeat(event)) return history_index_ >= 0;
-        return show_history_capture(-1);
+        if (event_is_auto_repeat(event)) {
+            if (history_index_ >= 0) return true;
+        } else if (show_history_capture(-1)) {
+            return true;
+        }
     }
     if (match(event, "inapp_confirm")) {
         if (w->scene && w->scene->selection_model->is_confirmed()) {
