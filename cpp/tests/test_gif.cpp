@@ -1146,15 +1146,19 @@ private slots:
         cursor->click();
         QVERIFY(cursor->isChecked());
 
-        // Saving asks for a file, writes the trimmed frames and closes.
+        // Saving asks for a file, writes the trimmed frames and closes. With nothing
+        // remembered yet the picker starts in the configured screenshot folder.
+        config->set_save_dialog_last_dir(QString());
         QTemporaryDir out;
         const QString target = out.filePath("saved.gif");
+        QString opened_in;
         QTimer answer;
         connect(&answer, &QTimer::timeout, this, [&] {
             auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget());
             auto *name = dialog ? dialog->findChild<QLineEdit *>("fileNameEdit") : nullptr;
             if (!name || !dialog->isVisible()) return;
             answer.stop();
+            opened_in = dialog->directory().absolutePath();
             // Typed like a person would: selectFile is reset when the dialog finishes showing.
             dialog->setDirectory(out.path());
             name->setText("saved.gif");
@@ -1170,6 +1174,9 @@ private slots:
         guard.start(10000);
         button_with_tooltip(playback, "另存为")->click();
         QTRY_COMPARE_WITH_TIMEOUT(closed.size(), 1, 30000);
+        QCOMPARE(QDir(opened_in), QDir(settings_dir_.path()));
+        // A GIF save moves every later Save As to the folder the user chose.
+        QCOMPARE(QDir(QDir::fromNativeSeparators(config->get_save_dialog_last_dir())), QDir(out.path()));
         QImageReader reader(target);
         QVERIFY2(reader.canRead(), qPrintable(reader.errorString()));
         QVERIFY2(std::abs(reader.imageCount() - (trim_end - trim_start + 1)) <= 1, qPrintable(QString("%1 vs %2").arg(reader.imageCount()).arg(trim_end - trim_start + 1)));

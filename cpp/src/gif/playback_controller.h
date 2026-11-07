@@ -69,10 +69,11 @@ private:
     void on_save();
     void on_copy();
     // Shows the progress bar while exporting, then writes the file or copies it.
-    void compose_and_export(const QString &output_path, bool copy_to_clipboard);
+    // remember_on_success: a user-chosen destination updates the shared last-save folder.
+    void compose_and_export(const QString &output_path, bool copy_to_clipboard, bool remember_on_success = false);
     // Writes the file to the clipboard as a URL plus the raw bytes.
     static void copy_file_to_clipboard(const QString &path, const QString &mime_type = "image/gif");
-    // A GIF path in the screenshot save directory (created if missing).
+    // A GIF path in the shared last-save folder (created if missing).
     static QString make_save_path();
 
     PlaybackEngine *engine_ = nullptr;

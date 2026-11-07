@@ -105,6 +105,7 @@ private slots:
 
     void init() {
         settings_->clear();
+        config_->set_save_dialog_last_dir(QString());
         config_->set_screenshot_save_path(dir_.filePath("shots"));
     }
 
@@ -281,6 +282,34 @@ private slots:
         QCOMPARE(next.current_quality(), 70);
         QCOMPARE(QDir::fromNativeSeparators(next.directory_edit->text()), folder);
         QCOMPARE(next.target_size(), QSize(320, 200));
+    }
+
+    void classicSuggestionFollowsLastSave() {
+        const auto screenshot_folder = QDir::cleanPath(config_->get_screenshot_save_path());
+        // With nothing remembered yet, the system dialog starts in the screenshot folder.
+        QCOMPARE(QFileInfo(classic_save_suggestion(config_, "first.png")).absolutePath(), screenshot_folder);
+        const auto folder = dir_.filePath("classic");
+        QVERIFY(QDir().mkpath(folder));
+        remember_save_dir(config_, QDir(folder).filePath("first.png"));
+        // A successful save makes the next system dialog start in that folder.
+        QCOMPARE(QFileInfo(classic_save_suggestion(config_, "second.png")).absolutePath(), QDir::cleanPath(folder));
+        QCOMPARE(QDir::fromNativeSeparators(config_->get_save_dialog_last_dir()), QDir::cleanPath(folder));
+    }
+
+    void classicDirectorySharedByAllPickers() {
+        const auto screenshot_folder = QDir::cleanPath(config_->get_screenshot_save_path());
+        // GIF, MP4 and CSV pickers ask for the folder itself, not just a suggested file.
+        QCOMPARE(QDir::cleanPath(classic_save_directory(config_)), screenshot_folder);
+        const auto folder = QDir::cleanPath(dir_.filePath("shared"));
+        QVERIFY(QDir().mkpath(folder));
+        // A folder picker (clipboard items, all pinned images) hands back a directory.
+        remember_save_dir(config_, folder);
+        QCOMPARE(QDir::fromNativeSeparators(config_->get_save_dialog_last_dir()), folder);
+        QCOMPARE(QDir::cleanPath(classic_save_directory(config_)), folder);
+        QCOMPARE(QFileInfo(classic_save_suggestion(config_, "clipboard_export.csv")).absolutePath(), folder);
+        // A removed or non-absolute folder must not trap the next dialog.
+        config_->set_save_dialog_last_dir(dir_.filePath("gone"));
+        QCOMPARE(QDir::cleanPath(classic_save_directory(config_)), screenshot_folder);
     }
 
     void invalidNameBlocksSave() {

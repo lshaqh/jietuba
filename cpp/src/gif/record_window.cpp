@@ -19,6 +19,7 @@
 #include "tools/controller.h"
 #include "tools/cursor_manager.h"
 #include "ui/dialogs.h"
+#include "ui/save_image_dialog.h"
 #include "ui/wait_bar.h"
 #include <QApplication>
 #include <QClipboard>
@@ -433,7 +434,8 @@ void GifRecordWindow::cancel_countdown() {
 
 void GifRecordWindow::start_video() {
     if (video_busy()) return;
-    const QString folder = get_tool_settings_manager()->get_screenshot_save_path();
+    // The MP4 picker starts where the last save went, like every other Save As dialog.
+    const QString folder = classic_save_directory(nullptr);
     const auto now = std::chrono::system_clock::now();
     const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
     const QDateTime local = QDateTime::fromMSecsSinceEpoch(micros / 1000);
@@ -557,6 +559,8 @@ void GifRecordWindow::on_video_paused(bool paused) {
 void GifRecordWindow::on_video_completed(const QString &path) {
     // Re-recording opens only after the helper has exited too, so the capture session is never shared.
     completed_video_path_ = path;
+    // The recording is on disk now; share its folder with the other save pickers.
+    remember_save_dir(nullptr, path);
 }
 
 void GifRecordWindow::on_video_failed(const QString &code, const QString &message) {

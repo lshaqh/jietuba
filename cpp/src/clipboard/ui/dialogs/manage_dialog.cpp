@@ -25,6 +25,7 @@
 #include "core/ui_theme.h"
 #include "ui/dialogs.h"
 #include "ui/fluent_lite/inputs.h"
+#include "ui/save_image_dialog.h"
 #include "ui/fluent_lite/segmented.h"
 #include "ui/fluent_lite/theme.h"
 #include "ui/fluent_lite/titlebar.h"
@@ -1583,7 +1584,8 @@ void ManageDialog::on_delete_clicked() {
 
 void ManageDialog::export_to_csv() {
     // Plain text items only.
-    const auto [file_path, filter] = get_save_file_name(this, tr_text("Export to CSV"), "clipboard_export.csv", "CSV Files (*.csv);;All Files (*)");
+    const auto [file_path, filter] = get_save_file_name(this, tr_text("Export to CSV"),
+        classic_save_suggestion(nullptr, "clipboard_export.csv"), "CSV Files (*.csv);;All Files (*)");
     if (file_path.isEmpty()) return;
     try {
         const auto rows = collect_text_export_rows(*manager);
@@ -1593,6 +1595,7 @@ void ManageDialog::export_to_csv() {
             if (!chosen.isEmpty()) encoding = chosen;
         }
         write_csv_rows(file_path, {tr_text("Group"), tr_text("Content"), tr_text("Title")}, rows, encoding);
+        remember_save_dir(nullptr, file_path);
         show_info_dialog(this, tr_text("Export Successful"), tr_text("Exported {count} items to CSV file.").replace("{count}", QString::number(rows.size())));
     } catch (const std::exception &e) {
         show_warning_dialog(this, tr_text("Export Failed"), tr_text("Failed to export: {error}").replace("{error}", QString::fromUtf8(e.what())));
@@ -1600,7 +1603,9 @@ void ManageDialog::export_to_csv() {
 }
 
 void ManageDialog::import_from_csv() {
-    const auto [file_path, filter] = get_open_file_name(this, tr_text("Import from CSV"), "", "CSV Files (*.csv);;All Files (*)");
+    // Reading shares the same starting folder, but only a successful save moves it.
+    const auto [file_path, filter] = get_open_file_name(this, tr_text("Import from CSV"),
+        classic_save_directory(nullptr), "CSV Files (*.csv);;All Files (*)");
     if (file_path.isEmpty()) return;
     try {
         const auto rows = read_import_rows(file_path);

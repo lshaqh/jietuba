@@ -533,6 +533,7 @@ private slots:
         QTRY_VERIFY(saved.exists());
         QVERIFY(saved.open(QIODevice::ReadOnly));
         QCOMPARE(QString::fromUtf8(saved.readAll()), QString("line one\nline two"));
+        QCOMPARE(QDir::cleanPath(QDir::fromNativeSeparators(env_.config->get_save_dialog_last_dir())), QDir::cleanPath(dir.path()));
         // A file row whose files have all gone has nothing to save, and says so without copying.
         ModalAnswerer notice(true);
         {

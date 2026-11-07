@@ -739,6 +739,8 @@ private slots:
             QCOMPARE(ok.answered(), 1);
             QVERIFY(ok.texts.first().contains("3"));
         }
+        // The export joins the shared last-save folder, so the next Save As starts there.
+        QCOMPARE(QDir::cleanPath(QDir::fromNativeSeparators(env_.config->get_save_dialog_last_dir())), QDir::cleanPath(env_.dir.path()));
         const auto rows = read_import_rows(csv);
         QCOMPARE(rows.size(), 3);
         // Cancelling writes nothing.
@@ -757,6 +759,8 @@ private slots:
             ModalAnswerer ok(true);
             dialog->import_from_csv();
             QCOMPARE(ok.answered(), 1);
+            // Reading starts in the same folder a save last used.
+            QCOMPARE(QDir(open.opened_in), QDir(env_.dir.path()));
         }
         QCOMPARE(added.size(), 1);
         const auto groups = manager().get_groups();

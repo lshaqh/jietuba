@@ -28,15 +28,25 @@
 namespace jietuba {
 QString SaveService::get_default_directory() const { return config_manager.get_screenshot_save_path(); }
 
-// Given only a file name, the dialog opens in the process working directory (the install directory when packaged).
-QString SaveService::suggest_path(const QString &filename) const {
-    const auto directory = get_default_directory();
+// Every picker -- modern save window, system Save As, GIF, MP4, CSV, clipboard -- shares
+// app/save_dialog_last_dir. Prefer that folder over the fixed screenshot folder, and validate
+// it: a stale setting from another machine or a removed folder must not trap the dialog.
+QString SaveService::suggested_directory() const {
+    auto directory = config_manager.get_save_dialog_last_dir();
+    if (directory.isEmpty() || !ToolSettingsManager::is_absolute_save_path(directory) || !QFileInfo(directory).isDir())
+        directory = get_default_directory();
     std::error_code error;
     std::filesystem::create_directories(std::filesystem::path(directory.toStdWString()), error);
     if (error) {
         log_warning(T("无法创建保存目录: {directory} ({e})", {{"directory", directory}, {"e", QString::fromLocal8Bit(error.message())}}), "Save");
-        return filename;
+        return {};
     }
+    return directory;
+}
+
+QString SaveService::suggest_path(const QString &filename) const {
+    const auto directory = suggested_directory();
+    if (directory.isEmpty()) return filename;
     return QDir(directory).filePath(filename);
 }
 QString SaveService::normalize_format(QString format) {

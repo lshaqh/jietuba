@@ -15,6 +15,11 @@ public:
     explicit SaveService(ToolSettingsManager &config) : config_manager(config) {}
     ToolSettingsManager &config_manager;
     QString get_default_directory() const;
+    // The folder an interactive save should start in: the last folder anything was saved to,
+    // falling back to the configured screenshot folder. Created if missing; empty on failure.
+    QString suggested_directory() const;
+    // A full path in suggested_directory(), so a system Save As dialog does not start in the
+    // process working directory (the install directory when packaged).
     QString suggest_path(const QString &filename) const;
     std::pair<bool, std::optional<QString>> save_qimage(const QImage &image, QString directory = {},
         QString prefix = {}, QString suffix = {}, QString image_format = "PNG", int pdf_dpi = DEFAULT_PDF_DPI, QString target_path = {}) const;

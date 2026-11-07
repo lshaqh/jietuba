@@ -10,6 +10,7 @@
 #include "gif/record_toolbar.h"
 #include "settings/tool_settings.h"
 #include "ui/dialogs.h"
+#include "ui/save_image_dialog.h"
 #include <QApplication>
 #include <QClipboard>
 #include <QDateTime>
@@ -280,7 +281,7 @@ void PlaybackController::on_save() {
         return;
     }
     log_info(T("保存 GIF: {path}", {{"path", path}}), "GIF");
-    compose_and_export(path, false);
+    compose_and_export(path, false, true);
 }
 
 void PlaybackController::on_copy() {
@@ -289,7 +290,7 @@ void PlaybackController::on_copy() {
     compose_and_export(out, true);
 }
 
-void PlaybackController::compose_and_export(const QString &output_path, bool copy_to_clipboard) {
+void PlaybackController::compose_and_export(const QString &output_path, bool copy_to_clipboard, bool remember_on_success) {
     const auto &frames = recorder_->frames();
     const auto store = recorder_->store();
     const auto copy_text = copy_to_clipboard ? QString("True") : QString("False");
@@ -358,6 +359,9 @@ void PlaybackController::compose_and_export(const QString &output_path, bool cop
     log_info(T("GIF 导出完成: {result}", {{"result", result_text}}), "GIF");
 
     if (copy_to_clipboard) copy_file_to_clipboard(output_path, "image/gif");
+    // Only a destination the user picked in a Save As dialog updates the shared folder;
+    // the temporary file written for "copy to clipboard" must not move it.
+    if (remember_on_success) remember_save_dir(nullptr, output_path);
 
     emit close_requested();
 }
@@ -377,15 +381,7 @@ void PlaybackController::copy_file_to_clipboard(const QString &path, const QStri
 }
 
 QString PlaybackController::make_save_path() {
-    QString save_dir;
-    try {
-        save_dir = get_tool_settings_manager()->get_screenshot_save_path();
-    } catch (const std::exception &e) {
-        log_exception(e, T("获取截图保存路径"));
-        save_dir = QDir(QDir::homePath()).filePath("Desktop");
-    }
-    QDir().mkpath(save_dir);
     const QString ts = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
-    return QDir::toNativeSeparators(QDir(save_dir).filePath(QString("jietuba_gif_%1.gif").arg(ts)));
+    return classic_save_suggestion(nullptr, QString("jietuba_gif_%1.gif").arg(ts));
 }
 }

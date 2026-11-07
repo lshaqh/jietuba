@@ -24,6 +24,16 @@ class ToolSettingsManager;
 // Whether interactive saves open SaveImageDialog rather than the system Save As dialog.
 bool use_modern_save_dialog(ToolSettingsManager *config);
 
+// One place for the folder every save picker starts in: the last folder anything was
+// saved to, or the configured screenshot folder when there is none yet. Created if missing.
+QString classic_save_directory(ToolSettingsManager *config);
+// classic_save_directory() plus a file name: a full path for the system Save As dialog.
+QString classic_save_suggestion(ToolSettingsManager *config, const QString &file_name);
+// Records the folder of a successful save. saved_path may be a file or a chosen folder.
+// Shared by the modern and system dialogs, GIF/MP4/CSV exports and clipboard saves, so
+// switching between them keeps opening in the folder the user last saved to.
+void remember_save_dir(ToolSettingsManager *config, const QString &saved_path);
+
 // A frequently used save folder, shown as a tag under the folder field.
 struct PathTag {
     QString name, path;

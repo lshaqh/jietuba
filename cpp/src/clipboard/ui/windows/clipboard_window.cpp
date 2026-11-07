@@ -20,6 +20,7 @@
 #include "settings/tool_settings.h"
 #include "ui/dialogs.h"
 #include "ui/fluent_lite/inputs.h"
+#include "ui/save_image_dialog.h"
 #include "ui/fluent_lite/theme.h"
 #include <QApplication>
 #include <QCalendarWidget>
@@ -1286,9 +1287,10 @@ void ClipboardWindow::start_item_drag(qint64 item_id) {
 }
 
 QString ClipboardWindow::last_save_folder() const {
-    // Shared with the save image window: the last folder anything was saved to.
-    const QString folder = config->get_save_dialog_last_dir();
-    return !folder.isEmpty() && QFileInfo(folder).isDir() ? folder : QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
+    // Shared with every save picker: the last folder anything was saved to, or the
+    // configured screenshot folder. The Desktop is only a fallback when that cannot be made.
+    const QString folder = classic_save_directory(config);
+    return !folder.isEmpty() ? folder : QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
 }
 
 bool ClipboardWindow::save_items_to_folder(const QList<ClipboardItem> &items) {
@@ -1297,7 +1299,7 @@ bool ClipboardWindow::save_items_to_folder(const QList<ClipboardItem> &items) {
     const QString start = last_save_folder();
     const QString folder = get_existing_directory(this, tr_text("Choose a Folder to Save To"), start);
     if (folder.isEmpty()) return false;
-    config->set_save_dialog_last_dir(QDir::toNativeSeparators(folder));
+    remember_save_dir(config, folder);
     // Text and images become files the way a drag makes them; they stay until the copy that reads them is done.
     auto staged = std::make_shared<ItemDragMimeData>(items, manager.get_images_dir().value_or(QString()), ItemDragMimeData::default_temp_root());
     const QStringList sources = staged->file_paths();
@@ -1335,11 +1337,11 @@ void ClipboardWindow::save_item_as(qint64 item_id) {
     }
     if (item->content_type != "text") return;
     PreviewPopup::instance()->hide_preview();
-    const QString suggested = QDir(last_save_folder()).filePath(ItemDragMimeData::file_name(*item));
+    const QString suggested = classic_save_suggestion(config, ItemDragMimeData::file_name(*item));
     QString path = get_save_file_name(this, tr_text("Save as"), suggested, tr_text("Text Files (*.txt)")).first;
     if (path.isEmpty()) return;
     if (QFileInfo(path).suffix().isEmpty()) path += ".txt";
-    config->set_save_dialog_last_dir(QDir::toNativeSeparators(QFileInfo(path).absolutePath()));
+    remember_save_dir(config, path);
     QSaveFile file(path);
     const QByteArray bytes = item->content.toUtf8();
     if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit()) {

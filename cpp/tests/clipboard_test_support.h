@@ -116,6 +116,8 @@ public:
         timer_.start();
     }
     bool answered = false;
+    // The folder the dialog started in, before this answerer picks a path.
+    QString opened_in;
 
 private:
     void poll() {
@@ -124,6 +126,7 @@ private:
         if (!dialog || !dialog->isVisible() || !name) return;
         timer_.stop();
         answered = true;
+        opened_in = dialog->directory().absolutePath();
         if (path_.isEmpty()) {
             dialog->reject();
             return;

@@ -46,12 +46,16 @@ void save_image_item_as(QWidget *parent, ClipboardManager &manager, const std::o
         if (outcome != SaveImageDialog::Outcome::CLASSIC) return;
     }
     const QString default_name = base_name + ".png";
-    auto [file_path, selected_filter] = get_save_file_name(parent, tr_window("Save as"), default_name,
+    auto [file_path, selected_filter] = get_save_file_name(parent, tr_window("Save as"), classic_save_suggestion(nullptr, default_name),
                                                            tr_window("PNG Image (*.png);;JPEG Image (*.jpg *.jpeg);;Bitmap Image (*.bmp);;WebP Image (*.webp);;PDF (*.pdf)"));
     if (file_path.isEmpty()) return;
     const QString image_format = format_from_save_filter(file_path, selected_filter);
     if (extension_of(file_path).isEmpty()) file_path = file_path + "." + image_format.toLower();
-    if (!SaveService::save_qimage_to_path(image, file_path, image_format)) show_warning_dialog(parent, tr_window("Save Failed"), tr_window("Failed to save image."));
+    if (!SaveService::save_qimage_to_path(image, file_path, image_format)) {
+        show_warning_dialog(parent, tr_window("Save Failed"), tr_window("Failed to save image."));
+        return;
+    }
+    remember_save_dir(nullptr, file_path);
 }
 
 QString format_from_save_filter(const QString &file_path, const QString &selected_filter) {

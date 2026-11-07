@@ -408,6 +408,7 @@ private slots:
 
     void init() {
         settings_->clear();
+        config_->set_save_dialog_last_dir(QString());
         // Save dialogs create the save folder; keep it out of the user's real one.
         config_->set_screenshot_save_path(dir_.filePath("captures"));
         // Recognition would load an OCR engine 300 ms after every pin.
@@ -3698,8 +3699,9 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(pin->is_closed(), QApplication::doubleClickInterval() + 1000);
     }
 
-    // With the classic dialog, saving asks for a file, starting in the save folder; without an extension the
-    // chosen filter decides the format. The save window writes the pin image too. Copying goes to the clipboard.
+    // With the classic dialog, saving asks for a file, starting in the folder of the last
+    // save (the save window wrote there first); without an extension the chosen filter
+    // decides the format. The save window writes the pin image too. Copying goes to the clipboard.
     void savingAndCopyingThePinImage() {
         QTemporaryDir out;
         QString opened_in;
@@ -3741,8 +3743,8 @@ private slots:
         answer({}, {});
         pin->save_image();
         QVERIFY(QDir(out.path()).entryList(QDir::Files).isEmpty());
-        QCOMPARE(QDir(opened_in), QDir(save_folder));
-        QVERIFY(QFileInfo(save_folder).isDir());
+        QCOMPARE(QDir(opened_in), QDir(out.path()));
+        QCOMPARE(QDir(QDir::fromNativeSeparators(config_->get_app_setting("save_dialog_last_dir").toString())), QDir(out.path()));
         answer("plain", "BMP (*.bmp)");
         pin->save_image();
         QCOMPARE(QImageReader(out.filePath("plain.bmp")).size(), QSize(120, 80));

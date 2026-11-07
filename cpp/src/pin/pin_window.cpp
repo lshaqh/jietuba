@@ -1468,8 +1468,10 @@ void PinWindow::save_image_with_system_dialog() {
     when_pixels_ready([this, file_path, image_format] {
         with_edit_paused([this, file_path, image_format] {
             const auto image = get_current_image();
-            if (SaveService::save_qimage_to_path(image, file_path, image_format)) log_info(T("保存成功: {file_path}", {{"file_path", file_path}}), "PinWindow");
-            else log_error(T("保存失败: {file_path}", {{"file_path", file_path}}), "PinWindow");
+            if (SaveService::save_qimage_to_path(image, file_path, image_format)) {
+                log_info(T("保存成功: {file_path}", {{"file_path", file_path}}), "PinWindow");
+                remember_save_dir(config_manager, file_path);
+            } else log_error(T("保存失败: {file_path}", {{"file_path", file_path}}), "PinWindow");
         });
     });
 }
@@ -1486,8 +1488,10 @@ void PinWindow::save_animation() {
     if (QFileInfo(file_path).suffix().isEmpty()) file_path += "." + suffix;
     // The dialog has asked about replacing it.
     QFile::remove(file_path);
-    if (QFile::copy(source.path(), file_path)) log_info(T("保存成功: {file_path}", {{"file_path", file_path}}), "PinWindow");
-    else log_error(T("保存失败: {file_path}", {{"file_path", file_path}}), "PinWindow");
+    if (QFile::copy(source.path(), file_path)) {
+        log_info(T("保存成功: {file_path}", {{"file_path", file_path}}), "PinWindow");
+        remember_save_dir(config_manager, file_path);
+    } else log_error(T("保存失败: {file_path}", {{"file_path", file_path}}), "PinWindow");
 }
 
 void PinWindow::copy_animation() {

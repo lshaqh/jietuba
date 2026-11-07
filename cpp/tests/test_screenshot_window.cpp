@@ -219,6 +219,7 @@ private slots:
 
     void init() {
         settings_->clear();
+        config_->set_save_dialog_last_dir(QString());
         config_->set_screenshot_save_path(dir_.filePath("captures"));
         config_->set_screenshot_save_enabled(false);
         config_->set_app_setting("ocr_enabled", false);
@@ -979,7 +980,8 @@ private slots:
 
     // ---- Toolbar actions that leave the capture ----
 
-    // With the classic dialog, Save ends the capture and then asks for a file, starting in the save folder; the
+    // With the classic dialog, Save ends the capture and then asks for a file, starting in
+    // the screenshot folder until a save has happened (then the last folder is used); the
     // chosen filter decides the format of a name without one.
     void saveAsksForAFileAndWritesTheSelection() {
         config_->set_app_setting("save_dialog_style", "classic");
@@ -1005,6 +1007,15 @@ private slots:
         window->toolbar->save_btn->click();
         QTRY_VERIFY(QFileInfo::exists(out.filePath("typed.bmp")));
         QCOMPARE(QImageReader(out.filePath("typed.bmp")).format(), QByteArray("bmp"));
+
+        // A classic save remembers its folder: the next dialog opens there, not in the fixed save folder.
+        window = open_with_selection();
+        QString opened_again;
+        answer_file_dialog({}, {}, &opened_again);
+        window->toolbar->save_btn->click();
+        QTRY_VERIFY(!opened_again.isEmpty());
+        QCOMPARE(QDir(opened_again), QDir(out.path()));
+        QCOMPARE(QDir(QDir::fromNativeSeparators(config_->get_app_setting("save_dialog_last_dir").toString())), QDir(out.path()));
     }
 
     // Save ends the capture first and then opens the save window, which writes the selection; switching to the

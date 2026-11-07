@@ -9,6 +9,7 @@
 #include "settings/tool_settings.h"
 #include "ui/dialogs.h"
 #include "ui/key_chip.h"
+#include "ui/save_image_dialog.h"
 #include <QAction>
 #include <QDateTime>
 #include <QDir>
@@ -54,7 +55,9 @@ QString menu_style() {
 }
 
 void save_all_pins_as(PinManager *pin_manager) {
-    const auto directory = get_existing_directory(nullptr, tr_text("Choose folder to save pinned images"), QDir::homePath());
+    const auto start = classic_save_directory(nullptr);
+    const auto directory = get_existing_directory(nullptr, tr_text("Choose folder to save pinned images"),
+        start.isEmpty() ? QDir::homePath() : start);
     if (directory.isEmpty()) return;
     const auto prefix = QDateTime::currentDateTime().toString("'pins_'yyyyMMdd_HHmmss");
     std::pair<int, int> result;
@@ -66,6 +69,7 @@ void save_all_pins_as(PinManager *pin_manager) {
         return;
     }
     const auto [saved, failed] = result;
+    if (saved) remember_save_dir(nullptr, directory);
     if (failed)
         show_warning_dialog(nullptr, tr_text("Save Failed"),
                             tr_text("Saved {saved} pinned images, failed {failed}.").replace("{saved}", QString::number(saved)).replace("{failed}", QString::number(failed)));

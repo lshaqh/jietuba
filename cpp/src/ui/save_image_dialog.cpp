@@ -128,6 +128,25 @@ bool use_modern_save_dialog(ToolSettingsManager *config) {
     return config->get_save_dialog_style() != "classic";
 }
 
+QString classic_save_directory(ToolSettingsManager *config) {
+    if (!config) config = get_tool_settings_manager();
+    return SaveService(*config).suggested_directory();
+}
+
+QString classic_save_suggestion(ToolSettingsManager *config, const QString &file_name) {
+    if (!config) config = get_tool_settings_manager();
+    return SaveService(*config).suggest_path(file_name);
+}
+
+void remember_save_dir(ToolSettingsManager *config, const QString &saved_path) {
+    if (!config) config = get_tool_settings_manager();
+    const QFileInfo info(saved_path);
+    // A folder picker returns a folder; a file picker returns a file (which may not exist yet).
+    const QString directory = info.isDir() ? info.absoluteFilePath() : info.absolutePath();
+    if (directory.isEmpty() || !QFileInfo(directory).isDir()) return;
+    config->set_save_dialog_last_dir(QDir::toNativeSeparators(directory));
+}
+
 bool same_folder(const QString &a, const QString &b) { return normalized_folder(a).compare(normalized_folder(b), Qt::CaseInsensitive) == 0; }
 
 std::vector<PathTag> load_path_tags(ToolSettingsManager *config) {
@@ -1100,7 +1119,7 @@ void SaveImageDialog::accept_save() {
         show_warning_dialog(this, tr_text("Save Failed"), QDir::toNativeSeparators(path));
         return;
     }
-    config_->set_save_dialog_last_dir(QDir::toNativeSeparators(directory));
+    remember_save_dir(config_, path);
     config_->set_save_dialog_format(current_format());
     config_->set_screenshot_quality(current_quality());
     saved_path_ = QDir::toNativeSeparators(path);

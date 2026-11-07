@@ -139,8 +139,10 @@ void ActionTools::save_image_interactively(QWidget *parent, const QImage &image,
     if (file_path.isEmpty()) return;
     const auto image_format = format_from_save_path(file_path, selected_filter);
     if (QFileInfo(file_path).suffix().isEmpty()) file_path = file_path + "." + image_format.toLower();
-    if (SaveService::save_qimage_to_path(image, file_path, image_format)) log_info(T("已保存到: {file_path}", {{"file_path", file_path}}), "Action");
-    else show_warning_dialog(parent, action_tr("Save Failed"), file_path);
+    if (SaveService::save_qimage_to_path(image, file_path, image_format)) {
+        log_info(T("已保存到: {file_path}", {{"file_path", file_path}}), "Action");
+        remember_save_dir(config, file_path);
+    } else show_warning_dialog(parent, action_tr("Save Failed"), file_path);
 }
 
 void ActionTools::handle_pin(bool close_after) {
