@@ -31,6 +31,9 @@ public:
     void set_excluded(std::function<bool(Hwnd)> predicate) { is_excluded_ = std::move(predicate); }
     // The last target; 0 once that window is gone.
     Hwnd target_hwnd() const;
+    // The child control that had focus in that window (Explorer's address bar is
+    // one). Recorded while the window was in front; a focusless thread reports 0.
+    Hwnd target_focus() const;
     // Samples the current foreground, then follows every later switch.
     void start();
     void stop();
@@ -42,6 +45,7 @@ private:
     bool consider(Hwnd hwnd);
     bool eligible(Hwnd hwnd) const;
     Hwnd target_hwnd_ = 0;
+    Hwnd target_focus_ = 0;
     std::function<bool(Hwnd)> is_excluded_;
     bool watching_ = false;
     QMetaObject::Connection connection_;

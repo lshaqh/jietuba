@@ -12,8 +12,17 @@ bool set_foreground_window(Hwnd hwnd);
 void release_modifiers();
 bool send_ctrl_v();
 // Activates hwnd and pastes; with no target (closed window) pastes into the current
-// foreground unless that is this application.
-void paste_to_target(Hwnd hwnd);
+// foreground unless that is this application. focus is the child control that had
+// the keyboard focus while hwnd was still in front; a window that loses activation
+// often reports no focus at all, so it has to be remembered beforehand.
+void paste_to_target(Hwnd hwnd, Hwnd focus = 0);
+#ifdef _WIN32
+// The child control that owns the focus inside hwnd, or 0 when focus is on hwnd
+// itself. Explorer's address bar is a child control: activating the top-level
+// window puts focus on the file list, so simulated Ctrl+V has to be directed
+// back to the control the user was typing in. Also used by the regression test.
+Hwnd focused_child_control(Hwnd hwnd);
+#endif
 // Hands every paste_to_target call to handler instead of pressing keys; empty restores.
 void set_paste_to_target_for_test(std::function<void(Hwnd)> handler);
 }

@@ -295,8 +295,9 @@ void ClipboardController::send_paste_keystroke(bool explicit_paste) {
     // Paste chosen in a menu is itself a manual paste; the auto-paste switch does not apply.
     if (!explicit_paste && !auto_paste_enabled) return;
     const Hwnd target_hwnd = foreground_tracker_.target_hwnd();
+    const Hwnd target_focus = foreground_tracker_.target_focus();
     // Delayed so the clipboard window is closed or hidden and cannot take the focus back.
-    QTimer::singleShot(50, [target_hwnd] { paste_to_target(target_hwnd); });
+    QTimer::singleShot(50, [target_hwnd, target_focus] { paste_to_target(target_hwnd, target_focus); });
 }
 
 bool ClipboardController::paste_item(qint64 item_id, const CloseCallback &on_close_callback, bool explicit_paste) {

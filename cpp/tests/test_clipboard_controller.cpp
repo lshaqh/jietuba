@@ -4,6 +4,12 @@
 #include "core/ui_scale.h"
 #include <QSignalSpy>
 #include <QTest>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 using namespace clipboard_test;
 
@@ -700,6 +706,31 @@ private slots:
         controller.on_window_show();
         QCOMPARE(controller.current_items.size(), 1);
         controller.on_window_hide();
+    }
+
+    // Explorer's address bar is a child control. The paste target used to be only
+    // the top-level window, so activating it put focus on the file list and the
+    // simulated Ctrl+V landed there instead of in the address bar.
+    void pasteTargetRemembersTheFocusedChildControl() {
+#ifdef _WIN32
+        QCOMPARE(focused_child_control(0), Hwnd(0));
+        QCOMPARE(focused_child_control(static_cast<Hwnd>(1)), Hwnd(0));
+        const HINSTANCE instance = GetModuleHandleW(nullptr);
+        HWND parent = CreateWindowExW(WS_EX_TOOLWINDOW, L"STATIC", L"", WS_POPUP,
+                                      -32000, -32000, 2, 2, nullptr, nullptr, instance, nullptr);
+        QVERIFY(parent);
+        ShowWindow(parent, SW_SHOWNOACTIVATE);
+        HWND edit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+                                    0, 0, 1, 1, parent, nullptr, instance, nullptr);
+        QVERIFY(edit);
+        const Hwnd top = reinterpret_cast<Hwnd>(parent);
+        SetFocus(edit);
+        QCOMPARE(focused_child_control(top), reinterpret_cast<Hwnd>(edit));
+        // With no focused child there is nothing to restore.
+        SetFocus(nullptr);
+        QCOMPARE(focused_child_control(top), Hwnd(0));
+        DestroyWindow(parent);
+#endif
     }
 };
 

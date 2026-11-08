@@ -1,4 +1,5 @@
 #include "clipboard/controllers/foreground_tracker.h"
+#include "clipboard/controllers/paste_keystroke.h"
 #include "core/input_hub.h"
 #include "core/logger.h"
 #include <QSet>
@@ -44,6 +45,11 @@ quint32 get_current_pid() { return GetCurrentProcessId(); }
 
 Hwnd ForegroundWindowTracker::target_hwnd() const { return is_alive(target_hwnd_) ? target_hwnd_ : 0; }
 
+Hwnd ForegroundWindowTracker::target_focus() const {
+    if (!target_hwnd()) return 0;
+    return target_focus_;
+}
+
 void ForegroundWindowTracker::start() {
     sample();
     if (watching_) return;
@@ -69,10 +75,16 @@ void ForegroundWindowTracker::on_foreground(Hwnd hwnd) {
 
 bool ForegroundWindowTracker::consider(Hwnd hwnd) {
     if (!eligible(hwnd)) return false;
-    if (hwnd == target_hwnd_) return false;
+    // Remember the focused child while the window is still in front. Explorer's
+    // address bar is a child control; once the window loses activation the thread
+    // usually reports no focus at all, so it cannot be recovered later.
+    const Hwnd focus = focused_child_control(hwnd);
+    const bool target_changed = hwnd != target_hwnd_;
+    if (!target_changed && focus == target_focus_) return false;
     target_hwnd_ = hwnd;
+    target_focus_ = focus;
     log_debug(T("粘贴目标更新为 {hwnd} ({cls})", {{"hwnd", static_cast<qulonglong>(hwnd)}, {"cls", get_window_class(hwnd)}}), "Clipboard");
-    return true;
+    return target_changed;
 }
 
 bool ForegroundWindowTracker::eligible(Hwnd hwnd) const {
