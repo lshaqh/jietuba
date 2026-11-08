@@ -1,5 +1,6 @@
 #include "clipboard_test_support.h"
 #include "clipboard/controllers/clipboard_controller.h"
+#include "clipboard/controllers/paste_keystroke.h"
 #include "clipboard/ui/dialogs/manage_dialog.h"
 #include "core/ui_scale.h"
 #include <QSignalSpy>
@@ -729,6 +730,39 @@ private slots:
         // With no focused child there is nothing to restore.
         SetFocus(nullptr);
         QCOMPARE(focused_child_control(top), Hwnd(0));
+        DestroyWindow(parent);
+#endif
+    }
+
+    // Win10's address bar is ComboBoxEx32 -> ComboBox -> Edit, so the Edit is a
+    // grandchild. Our picker takes the foreground, which makes Explorer leave
+    // edit mode: the Edit stays allocated but hidden and the thread reports no
+    // focus. Only a visible Edit can take WM_PASTE.
+    void explorerAddressBarEditIsFoundRecursively() {
+#ifdef _WIN32
+        QCOMPARE(is_explorer_window(0), false);
+        QCOMPARE(is_explorer_window(static_cast<Hwnd>(1)), false);
+        QCOMPARE(visible_address_bar_edit(0), Hwnd(0));
+        const HINSTANCE instance = GetModuleHandleW(nullptr);
+        HWND parent = CreateWindowExW(WS_EX_TOOLWINDOW, L"STATIC", L"", WS_POPUP,
+                                      -32000, -32000, 2, 2, nullptr, nullptr, instance, nullptr);
+        QVERIFY(parent);
+        ShowWindow(parent, SW_SHOWNOACTIVATE);
+        const Hwnd top = reinterpret_cast<Hwnd>(parent);
+        QCOMPARE(is_explorer_window(top), false);
+        // Breadcrumb mode: the Edit exists but is hidden, so it must be ignored.
+        HWND hidden = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_TABSTOP,
+                                      0, 0, 1, 1, parent, nullptr, instance, nullptr);
+        QVERIFY(hidden);
+        QCOMPARE(visible_address_bar_edit(top), Hwnd(0));
+        // Edit mode: a visible Edit nested two levels down must be found.
+        HWND combo = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE,
+                                     0, 0, 1, 1, parent, nullptr, instance, nullptr);
+        QVERIFY(combo);
+        HWND edit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE,
+                                    0, 0, 1, 1, combo, nullptr, instance, nullptr);
+        QVERIFY(edit);
+        QCOMPARE(visible_address_bar_edit(top), reinterpret_cast<Hwnd>(edit));
         DestroyWindow(parent);
 #endif
     }

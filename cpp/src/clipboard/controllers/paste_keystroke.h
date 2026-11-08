@@ -22,6 +22,11 @@ void paste_to_target(Hwnd hwnd, Hwnd focus = 0);
 // window puts focus on the file list, so simulated Ctrl+V has to be directed
 // back to the control the user was typing in. Also used by the regression test.
 Hwnd focused_child_control(Hwnd hwnd);
+// A visible Edit inside an Explorer window. The address bar only owns an Edit
+// while it is in edit mode; losing activation hides it and clears the thread's
+// focus, so neither remembered focus nor simulated keys can reach it.
+Hwnd visible_address_bar_edit(Hwnd hwnd);
+bool is_explorer_window(Hwnd hwnd);
 #endif
 // Hands every paste_to_target call to handler instead of pressing keys; empty restores.
 void set_paste_to_target_for_test(std::function<void(Hwnd)> handler);

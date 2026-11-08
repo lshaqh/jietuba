@@ -13,6 +13,9 @@ namespace {
 // is not going to accept it; paste into the current focus instead of waiting longer.
 constexpr int ACTIVATE_RETRY_MS = 20;
 constexpr int ACTIVATE_MAX_ATTEMPTS = 10;
+// Ctrl+L makes Explorer create/show the address bar Edit; it is not synchronous.
+constexpr int ADDRESS_BAR_RETRY_MS = 40;
+constexpr int ADDRESS_BAR_MAX_ATTEMPTS = 8;
 constexpr BYTE MODIFIER_KEYS[] = {VK_CONTROL, VK_SHIFT, VK_MENU, VK_LWIN, VK_RWIN};
 std::function<void(Hwnd)> &test_handler() {
     static std::function<void(Hwnd)> handler;
@@ -26,6 +29,53 @@ bool foreground_is_own_process() {
 }
 
 HWND as_hwnd(Hwnd hwnd) { return reinterpret_cast<HWND>(hwnd); }
+
+// Win10's address bar is ComboBoxEx32 -> ComboBox -> Edit, so the Edit is a
+// grandchild. Once the picker window takes the foreground Explorer leaves edit
+// mode: the Edit stays allocated but is hidden, and the thread reports no focus
+// at all. Only a visible Edit can accept WM_PASTE.
+struct EditSearch {
+    HWND preferred = nullptr;     // visible Edit whose parent is a ComboBox
+    HWND first_visible = nullptr; // any visible Edit (search boxes, dialogs)
+    HWND any = nullptr;           // first Edit, even hidden
+};
+
+BOOL CALLBACK collect_edit(HWND hwnd, LPARAM param) {
+    auto *search = reinterpret_cast<EditSearch *>(param);
+    wchar_t cls[64] = {};
+    if (GetClassNameW(hwnd, cls, 64) == 0) return TRUE;
+    if (std::wcscmp(cls, L"Edit") != 0) return TRUE;
+    if (!search->any) search->any = hwnd;
+    if (!IsWindowVisible(hwnd)) return TRUE;
+    if (!search->first_visible) search->first_visible = hwnd;
+    wchar_t parent_cls[64] = {};
+    HWND parent = GetParent(hwnd);
+    if (parent && GetClassNameW(parent, parent_cls, 64) > 0 &&
+        (std::wcscmp(parent_cls, L"ComboBox") == 0 || std::wcscmp(parent_cls, L"ComboBoxEx32") == 0) &&
+        !search->preferred)
+        search->preferred = hwnd;
+    return TRUE;
+}
+
+EditSearch find_edits(HWND root) {
+    EditSearch search;
+    if (root && IsWindow(root))
+        EnumChildWindows(root, collect_edit, reinterpret_cast<LPARAM>(&search));
+    return search;
+}
+
+HWND find_visible_edit(HWND root) {
+    const EditSearch search = find_edits(root);
+    return search.preferred ? search.preferred : search.first_visible;
+}
+
+// Ctrl+L focuses Explorer's address bar and puts it back into edit mode.
+void send_ctrl_l() {
+    keybd_event(VK_CONTROL, 0, 0, 0);
+    keybd_event('L', 0, 0, 0);
+    keybd_event('L', 0, KEYEVENTF_KEYUP, 0);
+    keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0);
+}
 
 // The target is more than a top-level window: Explorer's address bar, a search box
 // and a chat input are child controls. Activating the top-level window can move
@@ -55,8 +105,13 @@ HWND edit_control(HWND focus) {
     wchar_t cls[64] = {};
     if (GetClassNameW(focus, cls, 64) == 0) return nullptr;
     if (std::wcscmp(cls, L"Edit") == 0) return focus;
-    if (std::wcscmp(cls, L"ComboBoxEx32") == 0 || std::wcscmp(cls, L"ComboBox") == 0)
-        return FindWindowExW(focus, nullptr, L"Edit", nullptr);
+    if (std::wcscmp(cls, L"ComboBoxEx32") == 0 || std::wcscmp(cls, L"ComboBox") == 0) {
+        // Explorer's Edit is a grandchild (ComboBoxEx32 -> ComboBox -> Edit),
+        // so FindWindowEx on direct children never finds it.
+        const EditSearch search = find_edits(focus);
+        return search.preferred ? search.preferred
+                                : (search.first_visible ? search.first_visible : search.any);
+    }
     return nullptr;
 }
 
@@ -104,6 +159,54 @@ void activate_then_paste(PasteTarget target, int attempt) {
     set_foreground_window(target.top);
     QTimer::singleShot(ACTIVATE_RETRY_MS, [target, attempt] { activate_then_paste(target, attempt + 1); });
 }
+
+// Explorer leaves address bar edit mode as soon as our picker takes the
+// foreground: the Edit stays allocated but hidden, and the thread reports no
+// focus. WM_PASTE on that hidden Edit is ignored and a bare Ctrl+V lands in
+// the file list. Bring Explorer forward, press Ctrl+L to make the address bar
+// editable again, then paste straight into the visible Edit.
+void wait_for_address_bar_edit(PasteTarget target, int attempt) {
+    if (HWND edit = find_visible_edit(as_hwnd(target.top))) {
+        release_modifiers();
+        SendMessageTimeoutW(edit, WM_PASTE, 0, 0, SMTO_ABORTIFHUNG, 300, nullptr);
+        return;
+    }
+    if (attempt >= ADDRESS_BAR_MAX_ATTEMPTS) {
+        // Edit mode never came back; keep the original keystroke as a last resort.
+        release_modifiers();
+        send_ctrl_v();
+        return;
+    }
+    if (attempt == 0) {
+        release_modifiers();
+        send_ctrl_l();
+    }
+    QTimer::singleShot(ADDRESS_BAR_RETRY_MS, [target, attempt] {
+        wait_for_address_bar_edit(target, attempt + 1);
+    });
+}
+
+void activate_explorer_then_paste(PasteTarget target, int attempt) {
+    if (get_foreground_hwnd() == target.top) {
+        wait_for_address_bar_edit(target, 0);
+        return;
+    }
+    if (attempt >= ACTIVATE_MAX_ATTEMPTS) {
+        // Never simulate keys into an unknown foreground window. WM_PASTE is a
+        // direct message and does not need Explorer to be active.
+        if (HWND edit = find_visible_edit(as_hwnd(target.top))) {
+            release_modifiers();
+            SendMessageTimeoutW(edit, WM_PASTE, 0, 0, SMTO_ABORTIFHUNG, 300, nullptr);
+        } else {
+            log_debug(T("资源管理器 {hwnd} 未切到前台且地址栏未进入编辑模式，放弃粘贴", {{"hwnd", static_cast<qulonglong>(target.top)}}), "Clipboard");
+        }
+        return;
+    }
+    set_foreground_window(target.top);
+    QTimer::singleShot(ACTIVATE_RETRY_MS, [target, attempt] {
+        activate_explorer_then_paste(target, attempt + 1);
+    });
+}
 }
 
 Hwnd focused_child_control(Hwnd hwnd) {
@@ -124,6 +227,18 @@ Hwnd focused_child_control(Hwnd hwnd) {
     if (!focus_pid || focus_pid != root_pid) return 0;
     if (!IsChild(root, focus) && GetAncestor(focus, GA_ROOT) != root) return 0;
     return reinterpret_cast<Hwnd>(focus);
+}
+
+bool is_explorer_window(Hwnd hwnd) {
+    const HWND window = as_hwnd(hwnd);
+    if (!window || !IsWindow(window)) return false;
+    wchar_t cls[64] = {};
+    if (GetClassNameW(window, cls, 64) == 0) return false;
+    return std::wcscmp(cls, L"CabinetWClass") == 0 || std::wcscmp(cls, L"ExploreWClass") == 0;
+}
+
+Hwnd visible_address_bar_edit(Hwnd hwnd) {
+    return reinterpret_cast<Hwnd>(find_visible_edit(as_hwnd(hwnd)));
 }
 
 bool set_foreground_window(Hwnd target) {
@@ -163,6 +278,10 @@ void paste_to_target(Hwnd hwnd, Hwnd focus) {
     const PasteTarget target = resolve_target(hwnd, focus);
     if (!hwnd) {
         if (!foreground_is_own_process()) send_paste(target);
+        return;
+    }
+    if (is_explorer_window(target.top)) {
+        activate_explorer_then_paste(target, 0);
         return;
     }
     activate_then_paste(target, 0);
