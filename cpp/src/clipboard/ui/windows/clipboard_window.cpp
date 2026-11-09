@@ -400,6 +400,14 @@ void ClipboardWindow::save_window_geometry() {
 void ClipboardWindow::setup_ui() {
     setWindowTitle(tr_text("Clipboard History"));
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
+    // Win+V must not take the foreground. Windows' own clipboard panel and
+    // ClipboardX stay non-activating (WS_EX_NOACTIVATE); Qt's equivalent is
+    // WA_ShowWithoutActivating, which works with Qt::Tool. Without it the
+    // picker activates on show(), the original edit loses its caret (Explorer
+    // leaves address-bar edit mode, browser/chat inputs drop their selection)
+    // and the later Ctrl+V has nowhere to land. Keeping the target in front
+    // also lets paste_to_target() use its fast WM_PASTE path directly.
+    setAttribute(Qt::WA_ShowWithoutActivating, true);
     setAttribute(Qt::WA_TranslucentBackground);
     resize(saved_width_, saved_height_);
 
@@ -1491,7 +1499,13 @@ void ClipboardWindow::showEvent(QShowEvent *event) {
     QElapsedTimer timer;
     timer.start();
     QWidget::showEvent(event);
-    list_widget->setFocus();
+    activated_by_user_ = false;
+    // Setting Qt focus on an inactive window can make Qt activate it and undo
+    // WA_ShowWithoutActivating. Only give the list keyboard focus once the user
+    // has explicitly clicked into the picker (tracked in changeEvent).
+    if (isActiveWindow()) {
+        list_widget->setFocus();
+    }
     position_on_show();
     QTimer::singleShot(0, group_bar, [this] { group_bar->refresh_buttons(); });
     QTimer::singleShot(0, this, [this] { reveal_window(); });
@@ -1576,7 +1590,18 @@ void ClipboardWindow::closeEvent(QCloseEvent *event) {
 
 void ClipboardWindow::changeEvent(QEvent *event) {
     QWidget::changeEvent(event);
-    if (event->type() == QEvent::ActivationChange && !isActiveWindow()) QTimer::singleShot(100, this, [this] { check_and_hide(); });
+    if (event->type() != QEvent::ActivationChange) return;
+    // WA_ShowWithoutActivating leaves isActiveWindow() false from the moment
+    // the picker appears. An activation change delivered while the picker was
+    // never active must not close it immediately; only a real loss of
+    // activation (the user clicked in, then focus went back to the target)
+    // means the picker should hide. Qt still activates the window normally on
+    // a mouse click, which is what restores search/keyboard interaction.
+    if (isActiveWindow()) {
+        activated_by_user_ = true;
+        return;
+    }
+    if (activated_by_user_) QTimer::singleShot(100, this, [this] { check_and_hide(); });
 }
 
 bool ClipboardWindow::owns_window(const QWidget *window) const {

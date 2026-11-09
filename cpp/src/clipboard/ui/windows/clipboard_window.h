@@ -273,6 +273,9 @@ private:
     int auto_fill_remaining_ = 3;
     bool offscreen_warmup_in_progress_ = false;
     bool dragging_ = false;
+    // The picker is shown without activation; this records whether the user has
+    // since clicked into it, so an ActivationChange cannot hide it prematurely.
+    bool activated_by_user_ = false;
     // Where the mouse last was, to tell real movement from the list scrolling under a still mouse.
     std::optional<QPoint> pointer_pos_;
     // The row the mouse is over; -1 over blank space or outside the list.

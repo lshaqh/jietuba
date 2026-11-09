@@ -696,7 +696,10 @@ std::optional<ClipboardItem> ClipboardController::get_item(qint64 item_id) { ret
 void ClipboardController::set_paste_target_exclusion(std::function<bool(Hwnd)> predicate) { foreground_tracker_.set_excluded(std::move(predicate)); }
 
 void ClipboardController::on_window_show() {
-    // showEvent comes before the window gets focus, so the foreground is still the user's window.
+    // The picker is now shown with WA_ShowWithoutActivating, so the foreground
+    // is still the user's editor and focused_child_control() captures the real
+    // caret owner. Previously show() took the foreground here and the tracker
+    // had to reconstruct the paste target after the caret was already lost.
     foreground_tracker_.start();
     load_history();
 }
