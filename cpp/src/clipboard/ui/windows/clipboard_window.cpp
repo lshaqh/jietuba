@@ -1512,7 +1512,9 @@ void ClipboardWindow::showEvent(QShowEvent *event) {
     // Qt created this picker with WS_EX_NOACTIVATE. Re-assert the topmost bit
     // explicitly so ordinary windows stay below it; shell flyouts in higher
     // z-order bands are handled by dismiss_shell_flyout() in the controller.
-    ensure_topmost(reinterpret_cast<Hwnd>(winId()));
+    // Qt6's WId is already an integer (quintptr), so this is a standard
+    // conversion; reinterpret_cast between two integers is rejected by MSVC.
+    ensure_topmost(static_cast<Hwnd>(winId()));
 #endif
     QTimer::singleShot(0, group_bar, [this] { group_bar->refresh_buttons(); });
     QTimer::singleShot(0, this, [this] { reveal_window(); });
