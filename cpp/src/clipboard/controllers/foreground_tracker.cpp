@@ -19,6 +19,66 @@ const QSet<QString> &shell_classes() {
 const QString WATCHER = "clipboard";
 
 HWND as_hwnd(Hwnd hwnd) { return reinterpret_cast<HWND>(hwnd); }
+
+// Windows 8+ places Start / Search in ZBID_IMMERSIVE_MOGO and
+// ZBID_IMMERSIVE_SEARCH. Third-party windows are always in ZBID_DESKTOP, so
+// WS_EX_TOPMOST cannot put the picker above them: bands never mix.
+const QSet<QString> &immersive_classes() {
+    static const QSet<QString> classes{
+        "Windows.UI.Core.CoreWindow",
+        "Windows.UI.Input.InputSite.WindowClass",
+        "XamlExplorerHostIslandWindow"};
+    return classes;
+}
+
+const QSet<QString> &shell_hosts() {
+    static const QSet<QString> hosts{
+        "StartMenuExperienceHost.exe", "SearchHost.exe",
+        "ShellExperienceHost.exe", "SearchApp.exe"};
+    return hosts;
+}
+
+QString process_base_name(HWND hwnd) {
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (!pid) return {};
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!process) return {};
+    wchar_t image[MAX_PATH] = {};
+    DWORD length = MAX_PATH;
+    const BOOL ok = QueryFullProcessImageNameW(process, 0, image, &length);
+    CloseHandle(process);
+    if (!ok) return {};
+    const QString path = QString::fromWCharArray(image, static_cast<int>(length));
+    const int slash = qMax(path.lastIndexOf(QLatin1Char('\\')), path.lastIndexOf(QLatin1Char('/')));
+    return slash >= 0 ? path.mid(slash + 1) : path;
+}
+
+bool is_shell_flyout(HWND hwnd) {
+    if (!hwnd) return false;
+    if (!immersive_classes().contains(get_window_class(reinterpret_cast<Hwnd>(hwnd)))) return false;
+    return shell_hosts().contains(process_base_name(hwnd));
+}
+
+HWND find_desktop_window() {
+    const DWORD self = GetCurrentProcessId();
+    for (HWND hwnd = GetTopWindow(nullptr); hwnd; hwnd = GetNextWindow(hwnd, GW_HWNDNEXT)) {
+        if (!IsWindowVisible(hwnd) || IsIconic(hwnd)) continue;
+        DWORD pid = 0;
+        GetWindowThreadProcessId(hwnd, &pid);
+        if (!pid || pid == self) continue;
+        const QString cls = get_window_class(reinterpret_cast<Hwnd>(hwnd));
+        if (shell_classes().contains(cls) || immersive_classes().contains(cls)) continue;
+        if (cls == QLatin1String("Progman") || cls == QLatin1String("WorkerW") ||
+            cls == QLatin1String("Shell_SecondaryTrayWnd")) continue;
+        RECT rect = {};
+        if (GetWindowRect(hwnd, &rect) && rect.right - rect.left < 160) continue;
+        return hwnd;
+    }
+    // Nothing ordinary is open: activating the desktop still dismisses Start.
+    HWND desktop = FindWindowW(L"Progman", nullptr);
+    return desktop ? desktop : GetShellWindow();
+}
 }
 
 Hwnd get_foreground_hwnd() { return reinterpret_cast<Hwnd>(GetForegroundWindow()); }
@@ -42,6 +102,30 @@ QString get_window_class(Hwnd hwnd) {
 bool can_take_focus(Hwnd hwnd) { return !(GetWindowLongW(as_hwnd(hwnd), GWL_EXSTYLE) & WS_EX_NOACTIVATE); }
 
 quint32 get_current_pid() { return GetCurrentProcessId(); }
+
+Hwnd dismiss_shell_flyout() {
+    if (!is_shell_flyout(GetForegroundWindow())) return 0;
+    const HWND target = find_desktop_window();
+    if (!target) return 0;
+    // No synthetic Escape here: jietuba's shortcut handler owns Escape and
+    // would close the picker we are trying to show. Handing a normal window
+    // the foreground is enough to make the shell flyout light-dismiss.
+    set_foreground_window(reinterpret_cast<Hwnd>(target));
+    return reinterpret_cast<Hwnd>(target);
+}
+
+void ensure_topmost(Hwnd hwnd) {
+    if (!hwnd) return;
+    const HWND handle = reinterpret_cast<HWND>(hwnd);
+    SetWindowPos(handle, HWND_TOPMOST, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    const LONG_PTR ex = GetWindowLongPtrW(handle, GWL_EXSTYLE);
+    if ((ex & WS_EX_TOPMOST) == 0) {
+        SetWindowLongPtrW(handle, GWL_EXSTYLE, ex | WS_EX_TOPMOST);
+        SetWindowPos(handle, HWND_TOPMOST, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    }
+}
 
 Hwnd ForegroundWindowTracker::target_hwnd() const { return is_alive(target_hwnd_) ? target_hwnd_ : 0; }
 

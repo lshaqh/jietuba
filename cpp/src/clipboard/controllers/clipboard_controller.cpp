@@ -696,11 +696,17 @@ std::optional<ClipboardItem> ClipboardController::get_item(qint64 item_id) { ret
 void ClipboardController::set_paste_target_exclusion(std::function<bool(Hwnd)> predicate) { foreground_tracker_.set_excluded(std::move(predicate)); }
 
 void ClipboardController::on_window_show() {
-    // The picker is now shown with WA_ShowWithoutActivating, so the foreground
-    // is still the user's editor and focused_child_control() captures the real
-    // caret owner. Previously show() took the foreground here and the tracker
-    // had to reconstruct the paste target after the caret was already lost.
+    // WA_ShowWithoutActivating keeps the user's editor in front, so
+    // focused_child_control() captures the real caret owner. The exception is
+    // when Start / Search is open: Windows 8+ puts those flyouts in a higher
+    // z-order band that no third-party WS_EX_TOPMOST window can cover, and the
+    // tracker would record SearchHost.exe as the paste target. Hand the
+    // foreground back to a normal desktop window first (light-dismiss), then
+    // remember that window explicitly because SetForegroundWindow settles
+    // asynchronously and start()'s sample() may still see the shell host.
+    const Hwnd restored = dismiss_shell_flyout();
     foreground_tracker_.start();
+    if (restored) foreground_tracker_.remember(restored);
     load_history();
 }
 

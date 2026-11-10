@@ -1,3 +1,4 @@
+#include "clipboard/controllers/foreground_tracker.h"
 #include "clipboard/ui/windows/clipboard_window.h"
 #include "clipboard/ui/dialogs/manage_dialog.h"
 #include "clipboard/ui/image_item_actions.h"
@@ -1507,6 +1508,12 @@ void ClipboardWindow::showEvent(QShowEvent *event) {
         list_widget->setFocus();
     }
     position_on_show();
+#ifdef _WIN32
+    // Qt created this picker with WS_EX_NOACTIVATE. Re-assert the topmost bit
+    // explicitly so ordinary windows stay below it; shell flyouts in higher
+    // z-order bands are handled by dismiss_shell_flyout() in the controller.
+    ensure_topmost(reinterpret_cast<Hwnd>(winId()));
+#endif
     QTimer::singleShot(0, group_bar, [this] { group_bar->refresh_buttons(); });
     QTimer::singleShot(0, this, [this] { reveal_window(); });
     log_debug(T("⏱️ 打开窗口耗时: {elapsed_ms:.1f} ms", {{"elapsed_ms", timer.nsecsElapsed() / 1e6}}), "Clipboard");
